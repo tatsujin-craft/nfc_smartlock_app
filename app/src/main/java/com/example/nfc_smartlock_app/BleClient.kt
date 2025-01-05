@@ -1,13 +1,7 @@
 package com.example.nfc_smartlock_app
 
 import android.annotation.SuppressLint
-import android.bluetooth.BluetoothAdapter
-import android.bluetooth.BluetoothGatt
-import android.bluetooth.BluetoothGattCallback
-import android.bluetooth.BluetoothGattCharacteristic
-import android.bluetooth.BluetoothGattService
-import android.bluetooth.BluetoothManager
-import android.bluetooth.BluetoothProfile
+import android.bluetooth.*
 import android.content.Context
 import android.util.Log
 import android.widget.Toast
@@ -57,10 +51,10 @@ class BleClient(private val context: Context) {
                 override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
                     super.onConnectionStateChange(gatt, status, newState)
                     if (newState == BluetoothProfile.STATE_CONNECTED) {
-                        Log.d("BleClient", "Connected to GATT server.")
+                        Log.d(TAG, "Connected to GATT server.")
                         gatt.discoverServices()
                     } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
-                        Log.d("BleClient", "Disconnected from GATT server.")
+                        Log.d(TAG, "Disconnected from GATT server.")
                         gatt.close()
                         bluetoothGatt = null
                         onDisconnected()
@@ -70,20 +64,20 @@ class BleClient(private val context: Context) {
                 override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
                     super.onServicesDiscovered(gatt, status)
                     if (status == BluetoothGatt.GATT_SUCCESS) {
-                        Log.d("BleClient", "Services discovered.")
+                        Log.d(TAG, "Services discovered.")
                         onConnected()
                     } else {
-                        Log.d("BleClient", "Service discovery failed with status: $status")
+                        Log.e(TAG, "Service discovery failed with status: $status")
                         onConnectionFailed("Service discovery failed with status: $status")
                     }
                 }
             })
         } catch (e: SecurityException) {
-            Log.e("BleClient", "SecurityException: ${e.message}")
+            Log.e(TAG, "SecurityException: ${e.message}")
             Toast.makeText(context, "Required permissions are missing.", Toast.LENGTH_SHORT).show()
             onConnectionFailed("SecurityException: ${e.message}")
         } catch (e: Exception) {
-            Log.e("BleClient", "Exception: ${e.message}")
+            Log.e(TAG, "Exception: ${e.message}")
             Toast.makeText(context, "An error occurred while connecting.", Toast.LENGTH_SHORT).show()
             onConnectionFailed("Exception: ${e.message}")
         }
@@ -99,25 +93,27 @@ class BleClient(private val context: Context) {
     ) {
         try {
             val gatt = bluetoothGatt ?: run {
-                Log.e("BleClient", "BluetoothGatt is null.")
+                Log.e(TAG, "BluetoothGatt is null.")
                 onFailure("BluetoothGatt is null.")
                 return
             }
-            val service: BluetoothGattService = gatt.getService(serviceUuid) ?: run {
-                Log.e("BleClient", "Service UUID $serviceUuid not found.")
+            val service: BluetoothGattService? = gatt.getService(serviceUuid)
+            if (service == null) {
+                Log.e(TAG, "Service UUID $serviceUuid not found.")
                 onFailure("Service UUID $serviceUuid not found.")
                 return
             }
-            val characteristic: BluetoothGattCharacteristic = service.getCharacteristic(characteristicUuid) ?: run {
-                Log.e("BleClient", "Characteristic UUID $characteristicUuid not found.")
+            val characteristic: BluetoothGattCharacteristic? = service.getCharacteristic(characteristicUuid)
+            if (characteristic == null) {
+                Log.e(TAG, "Characteristic UUID $characteristicUuid not found.")
                 onFailure("Characteristic UUID $characteristicUuid not found.")
                 return
             }
 
-            // Prepare the unlock command (can include UID if necessary)
+            // Prepare the unlock command
             characteristic.value = "unlock".toByteArray(Charsets.UTF_8)
             val result = gatt.writeCharacteristic(characteristic)
-            Log.d("BleClient", "writeCharacteristic(unlock) result: $result")
+            Log.d(TAG, "writeCharacteristic(unlock) result: $result")
 
             if (!result) {
                 onFailure("Failed to write characteristic.")
@@ -125,11 +121,11 @@ class BleClient(private val context: Context) {
                 onSuccess()
             }
         } catch (e: SecurityException) {
-            Log.e("BleClient", "SecurityException: ${e.message}")
+            Log.e(TAG, "SecurityException: ${e.message}")
             Toast.makeText(context, "Required permissions are missing.", Toast.LENGTH_SHORT).show()
             onFailure("SecurityException: ${e.message}")
         } catch (e: Exception) {
-            Log.e("BleClient", "Exception: ${e.message}")
+            Log.e(TAG, "Exception: ${e.message}")
             Toast.makeText(context, "An error occurred while sending command.", Toast.LENGTH_SHORT).show()
             onFailure("Exception: ${e.message}")
         }
@@ -143,8 +139,13 @@ class BleClient(private val context: Context) {
         try {
             bluetoothGatt?.close()
             bluetoothGatt = null
+            Log.d(TAG, "Disconnected from BLE device.")
         } catch (e: Exception) {
-            Log.e("BleClient", "Exception during disconnect: ${e.message}")
+            Log.e(TAG, "Exception during disconnect: ${e.message}")
         }
+    }
+
+    companion object {
+        private const val TAG = "BleClient"
     }
 }
