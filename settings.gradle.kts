@@ -19,6 +19,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "nfc_smart_lock_app"
+rootProject.name = "nfc_smartlock_app"
 include(":app")
  

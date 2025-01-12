@@ -2,27 +2,28 @@ package com.example.nfc_smartlock_app
 
 import android.annotation.SuppressLint
 import android.bluetooth.*
+import android.bluetooth.le.*
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.widget.Toast
 import java.util.UUID
 
-/**
- * Handles BLE connection and commands.
- */
 class BleClient(private val context: Context) {
 
     private var bluetoothGatt: BluetoothGatt? = null
+    private var bluetoothLeScanner: BluetoothLeScanner? = null
+    private var scanCallback: ScanCallback? = null
+    private val handler = Handler(Looper.getMainLooper())
 
-    // Replace these UUIDs with those defined on your ESP32
-    private val serviceUuid: UUID = UUID.fromString("0000AAAA-0000-1000-8000-00805f9b34fb")
-    private val characteristicUuid: UUID = UUID.fromString("0000BBBB-0000-1000-8000-00805f9b34fb")
+    private val serviceUuid: UUID = UUID.fromString("000000ff-0000-1000-8000-00805f9b34fb")
+    private val characteristicUuid: UUID = UUID.fromString("0000ff01-0000-1000-8000-00805f9b34fb")
 
-    /**
-     * Connects to the specified BLE device by name.
-     */
+    private var onFoundDevice: (() -> Unit)? = null
+
     @SuppressLint("MissingPermission")
-    fun connectToDevice(
+    fun scanAndConnect(
         deviceName: String,
         onConnected: () -> Unit,
         onDisconnected: () -> Unit,
@@ -37,17 +38,63 @@ class BleClient(private val context: Context) {
                 return
             }
 
-            // Search for the device among bonded devices
-            val bondedDevices = adapter.bondedDevices
-            val targetDevice = bondedDevices.firstOrNull { it.name == deviceName }
-            if (targetDevice == null) {
-                Toast.makeText(context, "Device $deviceName not found.", Toast.LENGTH_SHORT).show()
-                onConnectionFailed("Device $deviceName not found.")
+            bluetoothLeScanner = adapter.bluetoothLeScanner
+            if (bluetoothLeScanner == null) {
+                Toast.makeText(context, "Cannot get BluetoothLeScanner.", Toast.LENGTH_SHORT).show()
+                onConnectionFailed("Cannot get BluetoothLeScanner.")
                 return
             }
 
-            // Connect to the device
-            bluetoothGatt = targetDevice.connectGatt(context, false, object : BluetoothGattCallback() {
+            scanCallback = object : ScanCallback() {
+                override fun onScanResult(callbackType: Int, result: ScanResult) {
+                    val device = result.device
+                    if (device.name == deviceName) {
+                        Log.d(TAG, "Device found: ${device.name}")
+                        bluetoothLeScanner?.stopScan(this)
+                        connectToDevice(device, onConnected, onDisconnected, onConnectionFailed)
+                    }
+                }
+
+                override fun onScanFailed(errorCode: Int) {
+                    Log.e(TAG, "Scan failed with error: $errorCode")
+                    onConnectionFailed("Scan failed with error: $errorCode")
+                }
+            }
+
+            val scanFilter = ScanFilter.Builder()
+                .setDeviceName(deviceName)
+                .build()
+            val scanSettings = ScanSettings.Builder()
+                .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+                .build()
+
+            bluetoothLeScanner?.startScan(listOf(scanFilter), scanSettings, scanCallback)
+            // Stop scan after 10 seconds
+            handler.postDelayed({
+                bluetoothLeScanner?.stopScan(scanCallback)
+                Toast.makeText(context, "Scan timed out.", Toast.LENGTH_SHORT).show()
+                onConnectionFailed("Scan timed out.")
+            }, 10000)
+        } catch (e: SecurityException) {
+            Log.e(TAG, "SecurityException: ${e.message}")
+            Toast.makeText(context, "Required permissions are missing.", Toast.LENGTH_SHORT).show()
+            onConnectionFailed("SecurityException: ${e.message}")
+        } catch (e: Exception) {
+            Log.e(TAG, "Exception: ${e.message}")
+            Toast.makeText(context, "An error occurred while scanning.", Toast.LENGTH_SHORT).show()
+            onConnectionFailed("Exception: ${e.message}")
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun connectToDevice(
+        device: BluetoothDevice,
+        onConnected: () -> Unit,
+        onDisconnected: () -> Unit,
+        onConnectionFailed: (String) -> Unit
+    ) {
+        try {
+            bluetoothGatt = device.connectGatt(context, false, object : BluetoothGattCallback() {
                 override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
                     super.onConnectionStateChange(gatt, status, newState)
                     if (newState == BluetoothProfile.STATE_CONNECTED) {
@@ -83,9 +130,6 @@ class BleClient(private val context: Context) {
         }
     }
 
-    /**
-     * Sends the "unlock" command via BLE.
-     */
     @SuppressLint("MissingPermission")
     fun sendUnlockCommand(
         onSuccess: () -> Unit,
@@ -110,7 +154,6 @@ class BleClient(private val context: Context) {
                 return
             }
 
-            // Prepare the unlock command
             characteristic.value = "unlock".toByteArray(Charsets.UTF_8)
             val result = gatt.writeCharacteristic(characteristic)
             Log.d(TAG, "writeCharacteristic(unlock) result: $result")
@@ -131,9 +174,6 @@ class BleClient(private val context: Context) {
         }
     }
 
-    /**
-     * Disconnects from the BLE device.
-     */
     @SuppressLint("MissingPermission")
     fun disconnect() {
         try {

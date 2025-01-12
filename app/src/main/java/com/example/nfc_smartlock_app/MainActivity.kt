@@ -3,7 +3,6 @@ package com.example.nfc_smartlock_app
 import android.Manifest
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothManager
-import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -14,6 +13,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import android.content.Context
 
 class MainActivity : AppCompatActivity() {
 
@@ -34,15 +34,12 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        // Initialize UI components
         connectButton = findViewById(R.id.connectButton)
         unlockButton = findViewById(R.id.unlockButton)
         statusTextView = findViewById(R.id.statusTextView)
 
-        // Initialize BLE client
         bleClient = BleClient(this)
 
-        // Set click listeners
         connectButton.setOnClickListener {
             connectToBleDevice()
         }
@@ -51,18 +48,13 @@ class MainActivity : AppCompatActivity() {
             sendUnlockCommand()
         }
 
-        // Disable Unlock button until connected
         unlockButton.isEnabled = false
 
-        // Check and request permissions
         if (!arePermissionsGranted()) {
             requestPermissions()
         }
     }
 
-    /**
-     * Checks if all required permissions are granted.
-     */
     private fun arePermissionsGranted(): Boolean {
         val permissions = mutableListOf<String>()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -81,9 +73,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * Requests the necessary permissions.
-     */
     private fun requestPermissions() {
         val permissionsToRequest = mutableListOf<String>()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -104,9 +93,6 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    /**
-     * Handles the result of permission requests.
-     */
     override fun onRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<out String>,
@@ -121,16 +107,12 @@ class MainActivity : AppCompatActivity() {
             } else {
                 Log.e(TAG, "Required permissions were denied.")
                 Toast.makeText(this, "Required permissions were denied.", Toast.LENGTH_LONG).show()
-                // Disable functionality that depends on these permissions.
                 connectButton.isEnabled = false
                 unlockButton.isEnabled = false
             }
         }
     }
 
-    /**
-     * Initiates connection to the BLE device.
-     */
     private fun connectToBleDevice() {
         if (bluetoothAdapter == null || !bluetoothAdapter!!.isEnabled) {
             Toast.makeText(this, "Bluetooth is disabled.", Toast.LENGTH_SHORT).show()
@@ -138,10 +120,10 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        statusTextView.text = "Connecting to ESP_SMART_LOCK..."
-        Log.d(TAG, "Attempting to connect to ESP_SMART_LOCK.")
+        statusTextView.text = "Scanning for ESP_SMART_LOCK..."
+        Log.d(TAG, "Starting scan for ESP_SMART_LOCK.")
 
-        bleClient?.connectToDevice(
+        bleClient?.scanAndConnect(
             deviceName = "ESP_SMART_LOCK",
             onConnected = {
                 runOnUiThread {
@@ -166,9 +148,6 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    /**
-     * Sends the "unlock" command to the BLE server.
-     */
     private fun sendUnlockCommand() {
         statusTextView.text = "Sending unlock command..."
         Log.d(TAG, "Sending unlock command to ESP_SMART_LOCK.")
